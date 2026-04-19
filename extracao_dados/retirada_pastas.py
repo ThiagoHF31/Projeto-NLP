@@ -1,9 +1,9 @@
 import shutil
 import os
 from pathlib import Path
-
-origem = Path("C:/Users/paogr/Desktop/NLP/dados/pdfs")
-destino = Path("C:/Users/paogr/Desktop/NLP/dados/pdfs")
+    
+origem = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\dados\\pdfs")
+destino = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\dados\\pdfs")
 
 def destino_unico(caminho):
     if not caminho.exists():
