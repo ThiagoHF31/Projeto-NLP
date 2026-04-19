@@ -1,8 +1,25 @@
-# Pipeline RAG SOTA — dependências
+# ── Extração de PDF ───────────────────────────────────────────────────────────
 pymupdf>=1.24.0
 pymupdf4llm>=0.0.17
+
+# ── Chunking / LangChain ──────────────────────────────────────────────────────
 langchain-text-splitters>=0.3.0
-chromadb>=0.5.0
+
+# ── Banco vetorial ────────────────────────────────────────────────────────────
+chromadb>=1.0.0
+
+# ── Embeddings ────────────────────────────────────────────────────────────────
 sentence-transformers>=3.0.0
+torch>=2.0.0
+
+# ── Gemini API (pipeline_with_api.py) ────────────────────────────────────────
+google-genai>=1.0.0
+
+# ── Variáveis de ambiente ─────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── HTTP / LM Studio (pipeline_rag_sota.py) ──────────────────────────────────
 requests>=2.31.0
+
+# ── Progresso / UI ───────────────────────────────────────────────────────────
 tqdm>=4.66.0
