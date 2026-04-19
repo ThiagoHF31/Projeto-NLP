@@ -1,0 +1,8 @@
+# Pipeline RAG SOTA — dependências
+pymupdf>=1.24.0
+pymupdf4llm>=0.0.17
+langchain-text-splitters>=0.3.0
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+requests>=2.31.0
+tqdm>=4.66.0
