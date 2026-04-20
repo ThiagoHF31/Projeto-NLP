@@ -1,0 +1,9 @@
+=== ERRO ===
+Traceback (most recent call last):
+  File "c:\Users\paogr\Desktop\Projeto-NLP\chunk_embedding\aplicacao_ocr.py", line 78, in <module>
+    pages  = json_document(str(pdf))
+  File "c:\Users\paogr\Desktop\Projeto-NLP\chunk_embedding\aplicacao_ocr.py", line 61, in json_document
+    page_content=block["content"],
+                 ~~~~~^^^^^^^^^^^
+KeyError: 'content'
+
