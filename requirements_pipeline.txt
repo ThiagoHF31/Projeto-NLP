@@ -1,6 +1,24 @@
 # ── Extração de PDF ───────────────────────────────────────────────────────────
 pymupdf>=1.24.0
 pymupdf4llm>=0.0.17
+pypdf>=4.0.0
+
+# ── Extração de Tabelas ────────────────────────────────────────────────────────
+pdfplumber>=0.11.0
+camelot-py[cv]>=0.11.0
+tabula-py>=2.9.0
+
+# ── OCR (fallback para PDFs escaneados) ───────────────────────────────────────
+pytesseract>=0.3.10
+easyocr>=1.7.0
+
+# ── Renderização de páginas como imagem ───────────────────────────────────────
+pdf2image>=1.17.0
+Pillow>=10.0.0
+opencv-python>=4.9.0
+
+# ── Dados tabulares ────────────────────────────────────────────────────────────
+pandas>=2.0.0
 
 # ── Chunking / LangChain ──────────────────────────────────────────────────────
 langchain-text-splitters>=0.3.0
