@@ -1,0 +1,3 @@
+# Ignora todos os PDFs e arquivos baixados — pasta apenas local
+*
+!.gitignore
