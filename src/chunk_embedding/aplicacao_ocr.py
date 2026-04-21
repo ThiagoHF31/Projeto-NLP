@@ -1,5 +1,7 @@
+import sys
 import time
 from pathlib import Path
+sys.stdout.reconfigure(encoding="utf-8")
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -12,13 +14,13 @@ from langchain_core.documents import Document
 # ─────────────────────────────────────────
 # CONFIGURAÇÕES
 # ─────────────────────────────────────────
-CAMINHO_PDFS  = Path("C:\\Users\\paogr\\Desktop\\Projeto-NLP\\data\\processed\\extracted_json")
+CAMINHO_PDFS  = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\data\\processed\\extracted_json")
 MODELO_TOKEN  = "intfloat/multilingual-e5-small"
 MODELO_EMBED  = "intfloat/multilingual-e5-small"
 NOME_COLECAO  = "embeddings_salvar"
 CHUNK_SIZE    = 512
 CHUNK_OVERLAP = 103
-MAX_ARQUIVOS  = 1
+MAX_ARQUIVOS  = None
 
 
 # ─────────────────────────────────────────
@@ -28,11 +30,11 @@ tokenizer = AutoTokenizer.from_pretrained(MODELO_TOKEN)
 
 modelo_embedding = HuggingFaceEmbeddings(
     model_name=MODELO_EMBED,
-    model_kwargs={"device": "cpu"},
+    model_kwargs={"device": "cuda"},
     encode_kwargs={"normalize_embeddings": True},
 )
 
-client     = chromadb.PersistentClient(path="C:\\Users\\paogr\\Desktop\\NLP\\chroma_db")
+client     = chromadb.PersistentClient(path="C:\\Users\\User\\Desktop\\Projeto NLP\\data\\vector_store")
 collection = client.get_or_create_collection(name=NOME_COLECAO)
 
 splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
@@ -104,28 +106,24 @@ def json_document(nome_arquivo: str) -> list[Document]:
     return documentos_total
 
 
-def _sanitize_metadata(metadata: dict) -> dict:
-    """Garante que todos os valores sejam scalars aceitos pelo ChromaDB."""
-    return {
-        k: v if isinstance(v, (str, int, float, bool)) else str(v)
-        for k, v in metadata.items()
-    }
-
-
 # ─────────────────────────────────────────
 # PROCESSAMENTO PRINCIPAL
 # ─────────────────────────────────────────
+LOG_DIR = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\logs")
+LOG_DIR.mkdir(exist_ok=True)
+LOG_ERROS = LOG_DIR / "arquivos_com_erro.txt"
+
 tempo_inicio  = time.time()
 arquivos_proc = 0
+arquivos_erro = 0
 
-try:
-    for pdf in CAMINHO_PDFS.iterdir():
-        print(f"\nProcessando: {pdf.name} …")
+for pdf in CAMINHO_PDFS.iterdir():
+    print(f"\nProcessando: {pdf.name} …")
 
+    try:
         pages  = json_document(str(pdf))
         chunks = splitter.split_documents(pages)
 
-        # ✅ Prefixo "passage: " obrigatório para indexação no E5
         textos_raw     = [chunk.page_content for chunk in chunks]
         textos_prefixo = [f"passage: {t}" for t in textos_raw]
 
@@ -135,27 +133,29 @@ try:
 
         collection.upsert(
             ids=ids,
-            documents=textos_raw,       # ✅ armazena o texto limpo (sem prefixo)
-            embeddings=vetores,          # ✅ vetores gerados COM prefixo
+            documents=textos_raw,
+            embeddings=vetores,
             metadatas=metadatas,
         )
 
         print(f"  ✅ {len(textos_raw)} chunks adicionados à coleção '{NOME_COLECAO}'.")
-
         arquivos_proc += 1
-        if MAX_ARQUIVOS is not None and arquivos_proc >= MAX_ARQUIVOS:
-            break
 
-    tempo_total = time.time() - tempo_inicio
-    minutos     = int(tempo_total // 60)
-    segundos    = tempo_total % 60
+    except Exception as e:
+        arquivos_erro += 1
+        with open(LOG_ERROS, mode="a", encoding="utf-8") as log:
+            log.write(f"{pdf.name}\t{e}\n")
+            log.write(traceback.format_exc())
+            log.write("\n")
+        print(f"  ⚠️  Pulado (erro registrado em logs/): {e}")
 
-    print(f"\n📦 Total de itens na coleção: {collection.count()}")
-    print(f"⏱️  Tempo total: {minutos}m {segundos:.2f}s")
+    if MAX_ARQUIVOS is not None and arquivos_proc >= MAX_ARQUIVOS:
+        break
 
-except Exception as e:
-    with open("log.txt", mode="a", encoding="utf-8") as arquivo:
-        arquivo.write("=== ERRO ===\n")
-        arquivo.write(traceback.format_exc())
-        arquivo.write("\n")
-    print(f"❌ Erro registrado em log.txt: {e}")
+tempo_total = time.time() - tempo_inicio
+minutos     = int(tempo_total // 60)
+segundos    = tempo_total % 60
+
+print(f"\n📦 Total de itens na coleção: {collection.count()}")
+print(f"✅ Processados: {arquivos_proc} | ⚠️  Erros: {arquivos_erro}")
+print(f"⏱️  Tempo total: {minutos}m {segundos:.2f}s")

@@ -7,3 +7,52 @@ Traceback (most recent call last):
                  ~~~~~^^^^^^^^^^^
 KeyError: 'content'
 
+=== ERRO ===
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\Projeto NLP\src\chunk_embedding\aplicacao_ocr.py", line 135, in <module>
+    print(f"  ✅ {len(textos_raw)} chunks adicionados à coleção '{NOME_COLECAO}'.")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 2: character maps to <undefined>
+
+=== ERRO ===
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\Projeto NLP\src\chunk_embedding\aplicacao_ocr.py", line 130, in <module>
+    collection.upsert(
+    ~~~~~~~~~~~~~~~~~^
+        ids=ids,
+        ^^^^^^^^
+    ...<2 lines>...
+        metadatas=metadatas,
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\models\Collection.py", line 521, in upsert
+    upsert_request = self._validate_and_prepare_upsert_request(
+        ids=ids,
+    ...<4 lines>...
+        uris=uris,
+    )
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\models\CollectionCommon.py", line 103, in wrapper
+    return func(self, *args, **kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\models\CollectionCommon.py", line 431, in _validate_and_prepare_upsert_request
+    upsert_records = normalize_insert_record_set(
+        ids=ids,
+    ...<4 lines>...
+        uris=uris,
+    )
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\types.py", line 404, in normalize_insert_record_set
+    base_record_set = normalize_base_record_set(
+        embeddings=embeddings, documents=documents, images=images, uris=uris
+    )
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\types.py", line 376, in normalize_base_record_set
+    embeddings=normalize_embeddings(embeddings),
+               ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\types.py", line 230, in normalize_embeddings
+    raise ValueError(
+        f"Expected Embeddings to be non-empty list or numpy array, got {target}"
+    )
+ValueError: Expected Embeddings to be non-empty list or numpy array, got [] in upsert.
+
