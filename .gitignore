@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+data/vector_store/
+data/pdfs/
+data/raw/

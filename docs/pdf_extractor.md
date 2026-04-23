@@ -685,7 +685,7 @@ python pdf_extractor.py "dados/pdfs/" --no-recursive
 ### Usar como módulo Python
 
 ```python
-from extracao_text_PDFs.pdf_extractor import process_pdf, process_batch, find_pdfs
+from src.extraction import process_pdf, process_batch, find_pdfs
 
 # Arquivo único
 result = process_pdf("dados/pdfs/documento.pdf")

@@ -141,17 +141,15 @@ A função `limpar_url()` normaliza todos os casos para HTTPS válido.
 
 ```
 Projeto NLP/
-├── extracao_dados/
-│   ├── download_pdfs.py        ← este script
-│   └── README.md               ← esta documentação
-└── dados/
-    ├── dados_grupo_estudos/
+├── src/ingestion/
+│   └── download_pdfs.py        ← este script
+└── data/
+    ├── raw/metadata/
     │   ├── biblioteca_aneel_gov_br_legislacao_2016_metadados.json   (6.279 PDFs)
     │   ├── biblioteca_aneel_gov_br_legislacao_2021_metadados.json   (9.624 PDFs)
     │   └── biblioteca_aneel_gov_br_legislacao_2022_metadados.json   (11.136 PDFs)
-    ├── pdfs/                   ← 26.993 PDFs baixados (ignorados pelo git)
-    ├── pdfs_manifesto.csv      ← metadados completos + status de cada arquivo
-    └── pdfs_erros.log          ← log de falhas com URL e tipo de exceção
+    ├── pdfs/                   ← ~27.039 PDFs baixados (gitignored)
+    └── pdfs_manifesto.csv      ← metadados completos + status de cada arquivo
 ```
 
 ---
@@ -159,11 +157,11 @@ Projeto NLP/
 ## Como Executar
 
 ```bash
-# Instalar dependências
-pip install curl_cffi tqdm
+# Instalar dependências (já incluídas no requirements.txt)
+pip install -r requirements.txt
 
 # Rodar o download (retomável — pode interromper e continuar)
-python extracao_dados/download_pdfs.py
+py -3.13 src/ingestion/download_pdfs.py
 ```
 
 **Resultado final (execução de 2025-04-18):**

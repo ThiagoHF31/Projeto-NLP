@@ -1,41 +1,87 @@
+"""
+aplicacao_ocr.py — Pipeline de indexação de documentos ANEEL no ChromaDB.
+
+Lê os JSONs extraídos dos PDFs, chunka o full_text de cada documento e
+armazena os embeddings no banco vetorial para uso pelo RAG.
+"""
 import sys
 import time
-from pathlib import Path
-sys.stdout.reconfigure(encoding="utf-8")
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from transformers import AutoTokenizer
-from langchain_huggingface import HuggingFaceEmbeddings
-import chromadb
+import hashlib
 import traceback
 import json
-from langchain_core.documents import Document
+from pathlib import Path
 
+sys.stdout.reconfigure(encoding="utf-8")
 
-# ─────────────────────────────────────────
-# CONFIGURAÇÕES
-# ─────────────────────────────────────────
-CAMINHO_PDFS  = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\data\\processed\\extracted_json")
-MODELO_TOKEN  = "intfloat/multilingual-e5-small"
-MODELO_EMBED  = "intfloat/multilingual-e5-small"
+import torch
+from transformers import AutoTokenizer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+import chromadb
+from tqdm import tqdm
+
+# ── Configurações ─────────────────────────────────────────────────────────────
+ROOT          = Path(__file__).resolve().parent.parent.parent
+CAMINHO_JSONS = ROOT / "data" / "processed" / "extracted_json"
+VECTOR_STORE  = str(ROOT / "data" / "vector_store")
+LOG_DIR       = ROOT / "logs"
+
+MODELO        = "intfloat/multilingual-e5-small"
 NOME_COLECAO  = "embeddings_salvar"
-CHUNK_SIZE    = 512
-CHUNK_OVERLAP = 103
-MAX_ARQUIVOS  = None
+
+# e5-small suporta 512 tokens.
+# 450 + "passage: " (3 tokens) + [CLS][SEP] (2 tokens) = 455 — margem segura.
+CHUNK_SIZE    = 450
+CHUNK_OVERLAP = 45
+
+# Documentos com menos de MIN_TEXTO chars são cabeçalhos/imagens sem conteúdo
+MIN_TEXTO     = 150
+
+DEVICE        = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# ─────────────────────────────────────────
-# INICIALIZAÇÃO
-# ─────────────────────────────────────────
-tokenizer = AutoTokenizer.from_pretrained(MODELO_TOKEN)
+# ── Inicialização ──────────────────────────────────────────────────────────────
+LOG_DIR.mkdir(exist_ok=True)
+LOG_ERROS  = LOG_DIR / "indexacao_erros.txt"
+LOG_PULADO = LOG_DIR / "indexacao_pulados.txt"
+
+# Limpa logs anteriores
+LOG_ERROS.write_text("", encoding="utf-8")
+LOG_PULADO.write_text("", encoding="utf-8")
+
+print(f"[init] Device     : {DEVICE}")
+print(f"[init] Modelo     : {MODELO}")
+print(f"[init] JSONs      : {CAMINHO_JSONS}")
+print(f"[init] VectorStore: {VECTOR_STORE}")
+print()
+
+tokenizer = AutoTokenizer.from_pretrained(MODELO)
 
 modelo_embedding = HuggingFaceEmbeddings(
-    model_name=MODELO_EMBED,
-    model_kwargs={"device": "cuda"},
-    encode_kwargs={"normalize_embeddings": True},
+    model_name=MODELO,
+    model_kwargs={"device": DEVICE},
+    encode_kwargs={
+        "normalize_embeddings": True,
+        "batch_size": 64,
+    },
 )
 
-client     = chromadb.PersistentClient(path="C:\\Users\\User\\Desktop\\Projeto NLP\\data\\vector_store")
-collection = client.get_or_create_collection(name=NOME_COLECAO)
+client = chromadb.PersistentClient(path=VECTOR_STORE)
+
+# Recria a collection com distância cosine.
+# Cosine é obrigatório para embeddings normalizados: score = cosine_similarity.
+# L2 (padrão do chromadb) causa divergência no cálculo de score do LangChain.
+try:
+    client.delete_collection(NOME_COLECAO)
+    print(f"[init] Collection '{NOME_COLECAO}' anterior removida.")
+except Exception:
+    pass
+
+collection = client.create_collection(
+    name=NOME_COLECAO,
+    metadata={"hnsw:space": "cosine"},
+)
+print(f"[init] Collection '{NOME_COLECAO}' criada com distância cosine.\n")
 
 splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
     tokenizer=tokenizer,
@@ -44,118 +90,110 @@ splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
 )
 
 
-# ─────────────────────────────────────────
-# FUNÇÕES AUXILIARES
-# ─────────────────────────────────────────
-def _table_to_text(data: list[dict]) -> str:
-    """Converte lista de dicts (linhas da tabela) em texto legível por pipe."""
-    if not data:
-        return ""
-
-    def clean(s) -> str:
-        return str(s).replace("\n", " ").strip()
-
-    headers = list(data[0].keys())
-    linhas  = [" | ".join(clean(h) for h in headers), "-" * 60]
-
-    for row in data:
-        linhas.append(" | ".join(clean(row.get(h, "")) for h in headers))
-
-    return "\n".join(linhas)
+# ── Funções auxiliares ─────────────────────────────────────────────────────────
+def _md5(text: str) -> str:
+    """Hash do conteúdo para deduplicação de documentos idênticos."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def _sanitize_metadata(metadata: dict) -> dict:
-    """Garante que todos os valores sejam scalars aceitos pelo ChromaDB."""
+def _sanitize_metadata(meta: dict) -> dict:
+    """ChromaDB só aceita str, int, float ou bool como valores de metadado."""
     return {
         k: v if isinstance(v, (str, int, float, bool)) else str(v)
-        for k, v in metadata.items()
+        for k, v in meta.items()
     }
 
 
-def json_document(nome_arquivo: str) -> list[Document]:
-    """Lê um arquivo JSON extraído de PDF e retorna lista de Documents."""
-    documentos_total = []
+# ── Loop principal ─────────────────────────────────────────────────────────────
+arquivos  = sorted(p for p in CAMINHO_JSONS.iterdir() if p.suffix == ".json")
+vistos    = set()   # hashes MD5 de full_text já indexados
+proc_ok   = 0
+pulados   = 0
+erros     = 0
 
-    with open(nome_arquivo, encoding="utf-8") as arquivo:
-        documento = json.load(arquivo)
+tempo_inicio = time.time()
 
-    for block in documento["content_blocks"]:
-        metadata = {
-            **documento["metadata"],
-            "file_path":    documento["file_path"],
-            "page":         block["page"],
-            "block_type":   block["type"],
-            "block_source": block["source"],
+for caminho in tqdm(arquivos, desc="Indexando", unit="doc"):
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            doc = json.load(f)
+
+        full_text = doc.get("full_text", "").strip()
+
+        # ── Filtragem ──────────────────────────────────────────────────────────
+        if len(full_text) < MIN_TEXTO:
+            LOG_PULADO.open("a", encoding="utf-8").write(
+                f"CURTO ({len(full_text)}c): {caminho.name}\n"
+            )
+            pulados += 1
+            continue
+
+        h = _md5(full_text)
+        if h in vistos:
+            LOG_PULADO.open("a", encoding="utf-8").write(
+                f"DUPLICADO: {caminho.name}\n"
+            )
+            pulados += 1
+            continue
+        vistos.add(h)
+
+        # ── Chunking ───────────────────────────────────────────────────────────
+        chunks = splitter.split_text(full_text)
+        if not chunks:
+            pulados += 1
+            continue
+
+        # ── Metadados base do documento ────────────────────────────────────────
+        meta = doc.get("metadata", {})
+        base_meta = {
+            "file_name" : meta.get("file_name", caminho.name),
+            "num_pages" : meta.get("num_pages", 0),
+            "author"    : meta.get("author", ""),
+            "source_json": caminho.name,
         }
 
-        if block["type"] == "text":
-            content = block.get("content", "").replace("\\n", "\n")
+        # ── Embeddings ─────────────────────────────────────────────────────────
+        # O modelo e5 exige prefixo "passage: " para documentos indexados.
+        # A query usará "query: " (ver fazer_melhorar_perguntas.py → E5Embeddings).
+        textos_embed = [f"passage: {c}" for c in chunks]
+        vetores      = modelo_embedding.embed_documents(textos_embed)
 
-        elif block["type"] == "table":
-            metadata["bbox"] = str(block.get("bbox", []))
-            content = _table_to_text(block.get("data", []))
-
-        else:
-            content = block.get("content", str(block))
-
-        if content.strip():
-            documentos_total.append(
-                Document(page_content=content, metadata=metadata)
-            )
-
-    return documentos_total
-
-
-# ─────────────────────────────────────────
-# PROCESSAMENTO PRINCIPAL
-# ─────────────────────────────────────────
-LOG_DIR = Path("C:\\Users\\User\\Desktop\\Projeto NLP\\logs")
-LOG_DIR.mkdir(exist_ok=True)
-LOG_ERROS = LOG_DIR / "arquivos_com_erro.txt"
-
-tempo_inicio  = time.time()
-arquivos_proc = 0
-arquivos_erro = 0
-
-for pdf in CAMINHO_PDFS.iterdir():
-    print(f"\nProcessando: {pdf.name} …")
-
-    try:
-        pages  = json_document(str(pdf))
-        chunks = splitter.split_documents(pages)
-
-        textos_raw     = [chunk.page_content for chunk in chunks]
-        textos_prefixo = [f"passage: {t}" for t in textos_raw]
-
-        vetores   = modelo_embedding.embed_documents(textos_prefixo)
-        ids       = [f"{pdf.stem}_chunk_{i}" for i in range(len(chunks))]
-        metadatas = [_sanitize_metadata(chunk.metadata) for chunk in chunks]
+        # ── Persistência ───────────────────────────────────────────────────────
+        stem    = caminho.stem
+        ids     = [f"{stem}_chunk_{i}" for i in range(len(chunks))]
+        metas   = [
+            _sanitize_metadata({
+                **base_meta,
+                "chunk_index" : i,
+                "total_chunks": len(chunks),
+            })
+            for i in range(len(chunks))
+        ]
 
         collection.upsert(
             ids=ids,
-            documents=textos_raw,
-            embeddings=vetores,
-            metadatas=metadatas,
+            documents=chunks,     # texto limpo SEM prefixo
+            embeddings=vetores,   # vetores gerados COM prefixo "passage: "
+            metadatas=metas,
         )
 
-        print(f"  ✅ {len(textos_raw)} chunks adicionados à coleção '{NOME_COLECAO}'.")
-        arquivos_proc += 1
+        proc_ok += 1
 
     except Exception as e:
-        arquivos_erro += 1
-        with open(LOG_ERROS, mode="a", encoding="utf-8") as log:
-            log.write(f"{pdf.name}\t{e}\n")
-            log.write(traceback.format_exc())
-            log.write("\n")
-        print(f"  ⚠️  Pulado (erro registrado em logs/): {e}")
+        erros += 1
+        with LOG_ERROS.open("a", encoding="utf-8") as lf:
+            lf.write(f"{caminho.name}\t{e}\n{traceback.format_exc()}\n\n")
 
-    if MAX_ARQUIVOS is not None and arquivos_proc >= MAX_ARQUIVOS:
-        break
-
-tempo_total = time.time() - tempo_inicio
-minutos     = int(tempo_total // 60)
-segundos    = tempo_total % 60
-
-print(f"\n📦 Total de itens na coleção: {collection.count()}")
-print(f"✅ Processados: {arquivos_proc} | ⚠️  Erros: {arquivos_erro}")
-print(f"⏱️  Tempo total: {minutos}m {segundos:.2f}s")
+# ── Resumo ─────────────────────────────────────────────────────────────────────
+tempo = time.time() - tempo_inicio
+print(f"\n{'─'*50}")
+print(f"✅ Indexados  : {proc_ok}")
+print(f"⏭️  Pulados    : {pulados}")
+print(f"❌ Erros      : {erros}")
+print(f"📦 Total na coleção: {collection.count()}")
+print(f"⏱️  Tempo      : {int(tempo // 60)}m {tempo % 60:.1f}s")
+print(f"{'─'*50}")
+if erros:
+    print(f"   Detalhes dos erros: {LOG_ERROS}")
+if pulados:
+    print(f"   Detalhes dos pulados: {LOG_PULADO}")

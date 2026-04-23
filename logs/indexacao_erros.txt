@@ -1,0 +1,35 @@
+area20165670_2.json	ValueError: Batch size of 5510 is greater than max batch size of 5461
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\Projeto NLP\src\chunk_embedding\aplicacao_ocr.py", line 173, in <module>
+    collection.upsert(
+    ~~~~~~~~~~~~~~~~~^
+        ids=ids,
+        ^^^^^^^^
+    ...<2 lines>...
+        metadatas=metas,
+        ^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\models\Collection.py", line 530, in upsert
+    self._client._upsert(
+    ~~~~~~~~~~~~~~~~~~~~^
+        collection_id=self.id,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        database=self.database,
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\chromadb\api\rust.py", line 541, in _upsert
+    return self.bindings.upsert(
+           ~~~~~~~~~~~~~~~~~~~~^
+        str(collection_id),
+        ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        database,
+        ^^^^^^^^^
+    )
+    ^
+chromadb.errors.InternalError: ValueError: Batch size of 5510 is greater than max batch size of 5461
+
+
