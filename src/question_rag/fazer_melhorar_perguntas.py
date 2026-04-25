@@ -98,6 +98,23 @@ Resposta:""",
     return prompt | llm | StrOutputParser()
 
 
+def refinar_pergunta(llm, pergunta: str) -> str:
+    prompt = PromptTemplate(
+        input_variables=["pergunta"],
+        template="""Reformule a pergunta abaixo de forma clara e objetiva, mantendo a intenção original.
+Retorne APENAS a pergunta reformulada, sem explicações adicionais.
+
+Pergunta original: {pergunta}
+
+Pergunta reformulada:""",
+    )
+    chain = prompt | llm | StrOutputParser()
+    try:
+        return chain.invoke({"pergunta": pergunta}).strip()
+    except Exception:
+        return pergunta
+
+
 def recuperar_documentos(retriever, pergunta: str) -> list:
     return retriever.invoke(pergunta)
 
